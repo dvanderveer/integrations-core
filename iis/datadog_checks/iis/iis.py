@@ -9,7 +9,7 @@ Check the performance counters from IIS
 # project
 from checks import AgentCheck
 try:
-    from checks.libs.win.pdhbasecheck import PDHBaseCheck
+    from datadog_checks.checks.win import PDHBaseCheck
 except ImportError:
     def PDHBaseCheck(*args, **kwargs):
         return
