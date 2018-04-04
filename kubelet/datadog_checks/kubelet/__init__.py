@@ -3,5 +3,5 @@ from .__about__ import __version__
 
 __all__ = [
     'KubeletCheck',
-    '__version__',
+    '__version__'
 ]

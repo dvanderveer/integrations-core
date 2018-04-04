@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='tests for linux
 HERE = os.path.abspath(os.path.dirname(__file__))
 QUANTITIES = {
     '12k': 12 * 1000,
-    '12M': 12 * (1000*1000),
+    '12M': 12 * (1000 * 1000),
     '12Ki': 12. * 1024,
     '12K': 12.,
     '12test': 12.,
@@ -38,7 +38,7 @@ NODE_SPEC = {
     u'machine_id': u'5556dc4fc19807c8be37acb98b1ba490'
 }
 
-EXPECTED_METRICS = [
+EXPECTED_METRICS_COMMON = [
     'kubernetes.cpu.capacity',
     'kubernetes.cpu.usage.total',
     'kubernetes.cpu.limits',
@@ -49,15 +49,23 @@ EXPECTED_METRICS = [
     'kubernetes.memory.limits',
     'kubernetes.memory.requests',
     'kubernetes.memory.usage',
-    'kubernetes.memory.usage_pct',
     'kubernetes.network.rx_bytes',
+    'kubernetes.network.tx_bytes'
+]
+
+EXPECTED_METRICS_PROMETHEUS = [
+    'kubernetes.memory.usage_pct',
     'kubernetes.network.rx_dropped',
     'kubernetes.network.rx_errors',
-    'kubernetes.network.tx_bytes',
     'kubernetes.network.tx_dropped',
     'kubernetes.network.tx_errors',
     'kubernetes.io.write_bytes',
-    'kubernetes.io.read_bytes',
+    'kubernetes.io.read_bytes'
+]
+
+EXPECTED_METRICS_CADVISOR = [
+    'kubernetes.network_errors',
+    'kubernetes.diskio.io_service_bytes.stats.total',
 ]
 
 Label = namedtuple('Label', 'name value')
@@ -101,26 +109,65 @@ def test_parse_quantity():
         assert KubeletCheck.parse_quantity(raw) == res
 
 
-def test_kubelet_check(monkeypatch, aggregator):
+def test_kubelet_check_prometheus(monkeypatch, aggregator):
     check = KubeletCheck('kubelet', None, {}, [{}])
     monkeypatch.setattr(check, 'retrieve_pod_list', mock.Mock(return_value=json.loads(mock_from_file('pods.txt'))))
     monkeypatch.setattr(check, 'retrieve_node_spec', mock.Mock(return_value=NODE_SPEC))
-    monkeypatch.setattr(check, '_perform_kubelet_check',  mock.Mock(return_value=None))
+    monkeypatch.setattr(check, '_perform_kubelet_check', mock.Mock(return_value=None))
+    monkeypatch.setattr(check, 'process_cadvisor', mock.Mock(return_value=None))
+
     attrs = {
         'close.return_value': True,
         'iter_lines.return_value': mock_from_file('metrics.txt').split('\n')
     }
     mock_resp = mock.Mock(headers={'Content-Type': 'text/plain'}, **attrs)
     monkeypatch.setattr(check, 'poll', mock.Mock(return_value=mock_resp))
+
     check.check({})
 
+    assert check.cadvisor_legacy_url is None
     check.retrieve_pod_list.assert_called_once()
     check.retrieve_node_spec.assert_called_once()
     check._perform_kubelet_check.assert_called_once()
     check.poll.assert_called_once()
+    check.process_cadvisor.assert_not_called()
+
     # called twice so pct metrics are guaranteed to be there
     check.check({})
-    for metric in EXPECTED_METRICS:
+    for metric in EXPECTED_METRICS_COMMON:
+        aggregator.assert_metric(metric)
+    for metric in EXPECTED_METRICS_PROMETHEUS:
+        aggregator.assert_metric(metric)
+    assert aggregator.metrics_asserted_pct == 100.0
+
+
+def test_kubelet_check_cadvisor(monkeypatch, aggregator):
+    cadvisor_url = "http://valid:port/url"
+    check = KubeletCheck('kubelet', None, {}, [{}])
+    monkeypatch.setattr(check, 'retrieve_pod_list', mock.Mock(return_value=json.loads(mock_from_file('pods.txt'))))
+    monkeypatch.setattr(check, 'retrieve_node_spec', mock.Mock(return_value=NODE_SPEC))
+    monkeypatch.setattr(check, '_perform_kubelet_check', mock.Mock(return_value=None))
+    monkeypatch.setattr(check, 'retrieve_cadvisor_metrics',
+                        mock.Mock(return_value=json.loads(mock_from_file('cadvisor_1.2.json'))))
+    monkeypatch.setattr(check, 'process', mock.Mock(return_value=None))
+    monkeypatch.setattr(check, 'detect_cadvisor', mock.Mock(return_value=cadvisor_url))
+
+    monkeypatch.setattr('datadog_checks.kubelet.cadvisor.tags_for_docker', mock.Mock(return_value=["foo:bar"]))
+
+    check.check({})
+
+    assert check.cadvisor_legacy_url == cadvisor_url
+    check.retrieve_pod_list.assert_called_once()
+    check.retrieve_node_spec.assert_called_once()
+    check.retrieve_cadvisor_metrics.assert_called_once()
+    check._perform_kubelet_check.assert_called_once()
+    check.process.assert_not_called()
+
+    # called twice so pct metrics are guaranteed to be there
+    check.check({})
+    for metric in EXPECTED_METRICS_COMMON:
+        aggregator.assert_metric(metric)
+    for metric in EXPECTED_METRICS_CADVISOR:
         aggregator.assert_metric(metric)
     assert aggregator.metrics_asserted_pct == 100.0
 

@@ -17,6 +17,10 @@ from datadog_checks.checks.prometheus import PrometheusCheck
 from kubeutil import get_connection_info
 from tagger import get_tags
 
+# check
+from .common import FACTORS, CADVISOR_DEFAULT_PORT
+from .cadvisor import CadvisorScraper
+
 METRIC_TYPES = ['counter', 'gauge', 'summary']
 # container-specific metrics should have all these labels
 CONTAINER_LABELS = ['container_name', 'namespace', 'pod_name', 'name', 'image', 'id']
@@ -26,30 +30,10 @@ NODE_SPEC_PATH = '/spec'
 POD_LIST_PATH = '/pods/'
 CADVISOR_METRICS_PATH = '/metrics/cadvisor'
 
-# Suffixes per
-# https://github.com/kubernetes/kubernetes/blob/8fd414537b5143ab039cb910590237cabf4af783/pkg/api/resource/suffix.go#L108
-FACTORS = {
-    'n': float(1)/(1000*1000*1000),
-    'u': float(1)/(1000*1000),
-    'm': float(1)/1000,
-    'k': 1000,
-    'M': 1000*1000,
-    'G': 1000*1000*1000,
-    'T': 1000*1000*1000*1000,
-    'P': 1000*1000*1000*1000*1000,
-    'E': 1000*1000*1000*1000*1000*1000,
-    'Ki': 1024,
-    'Mi': 1024*1024,
-    'Gi': 1024*1024*1024,
-    'Ti': 1024*1024*1024*1024,
-    'Pi': 1024*1024*1024*1024*1024,
-    'Ei': 1024*1024*1024*1024*1024*1024,
-}
-
 log = logging.getLogger('collector')
 
 
-class KubeletCheck(PrometheusCheck):
+class KubeletCheck(PrometheusCheck, CadvisorScraper):
     """
     Collect container metrics from Kubelet.
     """
@@ -62,6 +46,9 @@ class KubeletCheck(PrometheusCheck):
         inst = instances[0] if instances else None
 
         self.kube_node_labels = inst.get('node_labels_to_host_tags', {})
+        self.cadvisor_legacy_port = inst.get('cadvisor_port', CADVISOR_DEFAULT_PORT)
+        self.cadvisor_legacy_url = None
+
         self.metrics_mapper = {
             'kubelet_runtime_operations_errors': 'kubelet.runtime.errors',
         }
@@ -108,6 +95,12 @@ class KubeletCheck(PrometheusCheck):
         self.node_spec_url = urljoin(endpoint, NODE_SPEC_PATH)
         self.pod_list_url = urljoin(endpoint, POD_LIST_PATH)
 
+        # Legacy cadvisor support
+        try:
+            self.cadvisor_legacy_url = self.detect_cadvisor(endpoint, self.cadvisor_legacy_port)
+        except Exception as e:
+            self.log.debug('cAdvisor not found, running in prometheus mode: %s' % str(e))
+
         # By default we send the buckets.
         send_buckets = instance.get('send_histograms_buckets', True)
         if send_buckets is not None and str(send_buckets).lower() == 'false':
@@ -125,7 +118,11 @@ class KubeletCheck(PrometheusCheck):
         self._report_node_metrics(instance_tags)
         self._report_pods_running(self.pod_list, instance_tags)
         self._report_container_spec_metrics(self.pod_list, instance_tags)
-        self.process(self.metrics_url, send_histograms_buckets=send_buckets, instance=instance)
+
+        if self.cadvisor_legacy_url:  # Legacy cAdvisor
+            self.process_cadvisor(instance)
+        else:  # Prometheus
+            self.process(self.metrics_url, send_histograms_buckets=send_buckets, instance=instance)
 
     def perform_kubelet_query(self, url, verbose=True, timeout=10):
         """

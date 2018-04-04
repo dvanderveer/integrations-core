@@ -10,6 +10,9 @@ instances:
     #
     # send_histograms_buckets: True
     #
+    # cAdvisor port, set it to 0 if cAdvisor is unavailable
+    # cadvisor_port: 4194
+    #
     # Like all checks based on the PrometheusCheck class, you can add tags
     # to the instance that will be added to all the metrics of this check instance.
     #
