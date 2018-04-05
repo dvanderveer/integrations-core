@@ -8,7 +8,6 @@ Collects metrics from cAdvisor instance
 # stdlib
 from fnmatch import fnmatch
 import numbers
-import re
 from urlparse import urlparse
 
 # 3p
