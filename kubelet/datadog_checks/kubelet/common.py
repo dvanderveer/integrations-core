@@ -63,7 +63,7 @@ class ContainerFilter:
 
     def is_excluded(self, cid):
         if cid not in self.containers:
-            # Filter out metrics not comming from a container (system slices)
+            # Filter out metrics not coming from a container (system slices)
             return True
         ctr = self.containers[cid]
         if not ("name" in ctr and "image" in ctr):

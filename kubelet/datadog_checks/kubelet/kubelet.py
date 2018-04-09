@@ -18,7 +18,7 @@ from kubeutil import get_connection_info
 from tagger import get_tags
 
 # check
-from .common import FACTORS, CADVISOR_DEFAULT_PORT
+from .common import FACTORS, CADVISOR_DEFAULT_PORT, ContainerFilter
 from .cadvisor import CadvisorScraper
 
 METRIC_TYPES = ['counter', 'gauge', 'summary']
@@ -112,6 +112,8 @@ class KubeletCheck(PrometheusCheck, CadvisorScraper):
             self.pod_list = self.retrieve_pod_list()
         except Exception:
             self.pod_list = None
+
+        self.container_filter = ContainerFilter(self.pod_list)
 
         instance_tags = instance.get('tags', [])
         self._perform_kubelet_check(instance_tags)

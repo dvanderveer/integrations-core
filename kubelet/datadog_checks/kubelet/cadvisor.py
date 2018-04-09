@@ -110,6 +110,10 @@ class CadvisorScraper():
             self._publish_raw_metrics(metric, dat[-1], tags, depth + 1)
 
     def _update_container_metrics(self, instance, subcontainer):
+        if self.container_filter.is_excluded(subcontainer.get('id')):
+            self.log.warning("excluding " + subcontainer.get('id'))
+            return
+
         tags = tags_for_docker(subcontainer.get('id'), True)
 
         if not tags:
@@ -131,5 +135,3 @@ class CadvisorScraper():
             self.rate(NAMESPACE + '.network_errors',
                       sum(float(net[x]) for x in NET_ERRORS),
                       tags=tags)
-
-        return tags
