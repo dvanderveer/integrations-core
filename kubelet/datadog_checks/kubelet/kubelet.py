@@ -110,6 +110,9 @@ class KubeletCheck(PrometheusCheck, CadvisorScraper):
 
         try:
             self.pod_list = self.retrieve_pod_list()
+            if self.pod_list.get("items") is None:
+                # Sanitize input: if no pod are running, 'items' is a NoneObject
+                self.pod_list['items'] = []
         except Exception:
             self.pod_list = None
 

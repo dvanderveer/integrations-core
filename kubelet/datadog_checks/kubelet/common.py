@@ -49,7 +49,7 @@ class ContainerFilter:
     def __init__(self, podlist):
         self.containers = {}
 
-        for pod in podlist.get('items', []):
+        for pod in podlist.get('items') or []:
             for ctr in pod['status'].get('containerStatuses', []):
                 cid = ctr.get('containerID')
                 if not cid:
