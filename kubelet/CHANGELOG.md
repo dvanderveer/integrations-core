@@ -1,14 +1,15 @@
 # CHANGELOG - kubelet
 
-Unreleased
+1.2.0 / Unreleased
 ==================
 
 ### Changes
 
-* [FEATURE] Reports nanocores instead of cores.
+* [FEATURE] Collect metrics directly from cadvisor, for kubenetes version older than 1.7.6. See [#1339][]
+* [FEATURE] Reports nanocores instead of cores. See [#1361][]
 
 
-1.1.0/ 2018-03-23
+1.1.0 / 2018-03-23
 ==================
 
 ### Changes
