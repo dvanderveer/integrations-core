@@ -17,7 +17,7 @@ import requests
 from datadog_checks.config import is_affirmative
 
 # check
-from .common import FACTORS, tags_for_docker
+from .common import FACTORS, tags_for_docker, tags_for_pod
 
 NAMESPACE = "kubernetes"
 DEFAULT_MAX_DEPTH = 10
@@ -29,6 +29,9 @@ DEFAULT_ENABLED_RATES = [
 DEFAULT_ENABLED_GAUGES = [
     'memory.usage',
     'filesystem.usage']
+DEFAULT_POD_LEVEL_METRICS = [
+    'network.*']
+
 
 NET_ERRORS = ['rx_errors', 'tx_errors', 'rx_dropped', 'tx_dropped']
 
@@ -61,6 +64,9 @@ class CadvisorScraper():
         self.enabled_gauges = ["{0}.{1}".format(NAMESPACE, x) for x in enabled_gauges]
         enabled_rates = instance.get('enabled_rates', DEFAULT_ENABLED_RATES)
         self.enabled_rates = ["{0}.{1}".format(NAMESPACE, x) for x in enabled_rates]
+        pod_level_metrics = instance.get('pod_level_metrics', DEFAULT_POD_LEVEL_METRICS)
+        self.pod_level_metrics = ["{0}.{1}".format(NAMESPACE, x) for x in pod_level_metrics]
+
         self.publish_aliases = is_affirmative(instance.get('publish_aliases', DEFAULT_PUBLISH_ALIASES))
 
         self._update_metrics(instance)
@@ -91,12 +97,20 @@ class CadvisorScraper():
             except Exception as e:
                 self.log.error("Unable to collect metrics for container: {0} ({1})".format(c_id, e))
 
-    def _publish_raw_metrics(self, metric, dat, tags, depth=0):
+    def _publish_raw_metrics(self, metric, dat, tags, is_pod, depth=0):
         if depth >= self.max_depth:
             self.log.warning('Reached max depth on metric=%s' % metric)
             return
 
         if isinstance(dat, numbers.Number):
+            # Pod level metric filtering
+            is_pod_metric = False
+            if self.pod_level_metrics and any([fnmatch(metric, pat) for pat in self.pod_level_metrics]):
+                is_pod_metric = True
+            if is_pod_metric != is_pod:
+                return
+
+            # Metric submission
             if self.enabled_rates and any([fnmatch(metric, pat) for pat in self.enabled_rates]):
                 self.rate(metric, float(dat), tags)
             elif self.enabled_gauges and any([fnmatch(metric, pat) for pat in self.enabled_gauges]):
@@ -104,17 +118,25 @@ class CadvisorScraper():
 
         elif isinstance(dat, dict):
             for k, v in dat.iteritems():
-                self._publish_raw_metrics(metric + '.%s' % k.lower(), v, tags, depth + 1)
+                self._publish_raw_metrics(metric + '.%s' % k.lower(), v, tags, is_pod, depth + 1)
 
         elif isinstance(dat, list):
-            self._publish_raw_metrics(metric, dat[-1], tags, depth + 1)
+            self._publish_raw_metrics(metric, dat[-1], tags, is_pod, depth + 1)
 
     def _update_container_metrics(self, instance, subcontainer):
-        if self.container_filter.is_excluded(subcontainer.get('id')):
-            self.log.warning("excluding " + subcontainer.get('id'))
-            return
-
-        tags = tags_for_docker(subcontainer.get('id'), True)
+        tags = []
+        is_pod = False
+        # Network metrics are attached to a pod
+        if subcontainer.get('labels', []).get('io.kubernetes.container.name') == "POD":
+            pod_uid = subcontainer.get('labels', []).get('io.kubernetes.pod.uid')
+            if pod_uid:
+                tags = tags_for_pod(pod_uid, True)
+                is_pod = True
+        else:  # Container
+            if self.container_filter.is_excluded(subcontainer.get('id')):
+                self.log.warning("excluding " + subcontainer.get('id'))
+                return
+            tags = tags_for_docker(subcontainer.get('id'), True)
 
         if not tags:
             self.log.debug("Subcontainer doesn't have tags, skipping.")
@@ -123,7 +145,7 @@ class CadvisorScraper():
         tags = list(set(tags + instance.get('tags', [])))
 
         stats = subcontainer['stats'][-1]  # take the latest
-        self._publish_raw_metrics(NAMESPACE, stats, tags)
+        self._publish_raw_metrics(NAMESPACE, stats, tags, is_pod)
 
         if subcontainer.get("spec", {}).get("has_filesystem") and stats.get('filesystem', []) != []:
             fs = stats['filesystem'][-1]
