@@ -63,11 +63,6 @@ EXPECTED_METRICS_PROMETHEUS = [
     'kubernetes.io.read_bytes'
 ]
 
-EXPECTED_METRICS_CADVISOR = [
-    'kubernetes.network_errors',
-    'kubernetes.diskio.io_service_bytes.stats.total',
-]
-
 Label = namedtuple('Label', 'name value')
 
 
@@ -137,39 +132,6 @@ def test_kubelet_check_prometheus(monkeypatch, aggregator):
     for metric in EXPECTED_METRICS_COMMON:
         aggregator.assert_metric(metric)
     for metric in EXPECTED_METRICS_PROMETHEUS:
-        aggregator.assert_metric(metric)
-    assert aggregator.metrics_asserted_pct == 100.0
-
-
-def test_kubelet_check_cadvisor(monkeypatch, aggregator):
-    cadvisor_url = "http://valid:port/url"
-    check = KubeletCheck('kubelet', None, {}, [{}])
-    monkeypatch.setattr(check, 'retrieve_pod_list',
-                        mock.Mock(return_value=json.loads(mock_from_file('pods_list_1.2.json'))))
-    monkeypatch.setattr(check, 'retrieve_node_spec', mock.Mock(return_value=NODE_SPEC))
-    monkeypatch.setattr(check, '_perform_kubelet_check', mock.Mock(return_value=None))
-    monkeypatch.setattr(check, 'retrieve_cadvisor_metrics',
-                        mock.Mock(return_value=json.loads(mock_from_file('cadvisor_1.2.json'))))
-    monkeypatch.setattr(check, 'process', mock.Mock(return_value=None))
-    monkeypatch.setattr(check, 'detect_cadvisor', mock.Mock(return_value=cadvisor_url))
-
-    monkeypatch.setattr('datadog_checks.kubelet.cadvisor.tags_for_docker',
-                        mock.Mock(return_value=["foo:bar"]))
-
-    check.check({})
-
-    assert check.cadvisor_legacy_url == cadvisor_url
-    check.retrieve_pod_list.assert_called_once()
-    check.retrieve_node_spec.assert_called_once()
-    check.retrieve_cadvisor_metrics.assert_called_once()
-    check._perform_kubelet_check.assert_called_once()
-    check.process.assert_not_called()
-
-    # called twice so pct metrics are guaranteed to be there
-    check.check({})
-    for metric in EXPECTED_METRICS_COMMON:
-        aggregator.assert_metric(metric)
-    for metric in EXPECTED_METRICS_CADVISOR:
         aggregator.assert_metric(metric)
     assert aggregator.metrics_asserted_pct == 100.0
 

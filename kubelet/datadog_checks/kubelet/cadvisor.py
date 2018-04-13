@@ -169,6 +169,4 @@ class CadvisorScraper():
 
         if is_pod and subcontainer.get("spec", {}).get("has_network"):
             net = stats['network']
-            self.rate(NAMESPACE + '.network_errors',
-                      sum(float(net[x]) for x in NET_ERRORS),
-                      tags=tags)
+            self.rate(NAMESPACE + '.network_errors', sum(float(net[x]) for x in NET_ERRORS), tags=tags)

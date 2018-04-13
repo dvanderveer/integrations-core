@@ -8,18 +8,15 @@ import mock
 import pytest
 import json
 
-from datadog_checks.kubelet import ContainerFilter
+from datadog_checks.kubelet import ContainerFilter, get_pod_by_uid, is_static_pending_pod
+
+from .test_kubelet import mock_from_file
 
 # Skip the whole tests module on Windows
 pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='tests for linux only')
 
 # Constants
 HERE = os.path.abspath(os.path.dirname(__file__))
-
-
-def mock_from_file(fname):
-    with open(os.path.join(HERE, 'fixtures', fname)) as f:
-        return f.read()
 
 
 def test_container_filter(monkeypatch):
@@ -57,3 +54,25 @@ def test_container_filter(monkeypatch):
     assert filter.is_excluded(short_cid) is True
     is_excluded.assert_called_once()
     is_excluded.assert_called_with(ctr_name, ctr_image)
+
+
+def test_pod_by_uid():
+    podlist = json.loads(mock_from_file('pods.txt'))
+
+    pod = get_pod_by_uid("260c2b1d43b094af6d6b4ccba082c2db", podlist)
+    assert pod is not None
+    assert pod["metadata"]["name"] == "kube-proxy-gke-haissam-default-pool-be5066f1-wnvn"
+
+
+def test_is_static_pod():
+    podlist = json.loads(mock_from_file('pods.txt'))
+
+    # kube-proxy-gke-haissam-default-pool-be5066f1-wnvn is static
+    pod = get_pod_by_uid("260c2b1d43b094af6d6b4ccba082c2db", podlist)
+    assert pod is not None
+    assert is_static_pending_pod(pod) is True
+
+    # fluentd-gcp-v2.0.10-9q9t4 is not static
+    pod = get_pod_by_uid("2edfd4d9-10ce-11e8-bd5a-42010af00137", podlist)
+    assert pod is not None
+    assert is_static_pending_pod(pod) is False

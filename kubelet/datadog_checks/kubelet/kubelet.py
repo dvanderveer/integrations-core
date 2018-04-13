@@ -129,6 +129,9 @@ class KubeletCheck(PrometheusCheck, CadvisorScraper):
         else:  # Prometheus
             self.process(self.metrics_url, send_histograms_buckets=send_buckets, instance=instance)
 
+        # Free up memory
+        self.pod_list = None
+
     def perform_kubelet_query(self, url, verbose=True, timeout=10):
         """
         Perform and return a GET request against kubelet. Support auth and TLS validation.
