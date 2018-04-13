@@ -13,15 +13,11 @@ from urlparse import urlparse
 # 3p
 import requests
 
-# project
-from datadog_checks.config import is_affirmative
-
 # check
 from .common import FACTORS, tags_for_docker, tags_for_pod, is_static_pending_pod, get_pod_by_uid
 
 NAMESPACE = "kubernetes"
 DEFAULT_MAX_DEPTH = 10
-DEFAULT_PUBLISH_ALIASES = False
 DEFAULT_ENABLED_RATES = [
     'diskio.io_service_bytes.stats.total',
     'network.??_bytes',
@@ -32,7 +28,6 @@ DEFAULT_ENABLED_GAUGES = [
 DEFAULT_POD_LEVEL_METRICS = [
     'network.*']
 
-
 NET_ERRORS = ['rx_errors', 'tx_errors', 'rx_dropped', 'tx_dropped']
 
 LEGACY_CADVISOR_METRICS_PATH = '/api/v1.3/subcontainers/'
@@ -41,6 +36,10 @@ LEGACY_CADVISOR_METRICS_PATH = '/api/v1.3/subcontainers/'
 class CadvisorScraper():
     @staticmethod
     def detect_cadvisor(kubelet_url, cadvisor_port):
+        """
+        Tries to connect to the cadvisor endpoint, with given params
+        :return: url if OK, raises exception if NOK
+        """
         if cadvisor_port == 0:
             raise ValueError("cAdvisor port set to 0 in configuration")
         kubelet_hostname = urlparse(kubelet_url).hostname
@@ -66,8 +65,6 @@ class CadvisorScraper():
         self.enabled_rates = ["{0}.{1}".format(NAMESPACE, x) for x in enabled_rates]
         pod_level_metrics = instance.get('pod_level_metrics', DEFAULT_POD_LEVEL_METRICS)
         self.pod_level_metrics = ["{0}.{1}".format(NAMESPACE, x) for x in pod_level_metrics]
-
-        self.publish_aliases = is_affirmative(instance.get('publish_aliases', DEFAULT_PUBLISH_ALIASES))
 
         self._update_metrics(instance)
 

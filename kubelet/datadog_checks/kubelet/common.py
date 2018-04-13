@@ -11,7 +11,6 @@ except ImportError:
     def is_excluded(name, image):
         return False
 
-
 SOURCE_TYPE = 'kubelet'
 
 CADVISOR_DEFAULT_PORT = 0
@@ -38,18 +37,27 @@ FACTORS = {
 
 
 def tags_for_pod(pod_id, cardinality):
+    """
+    Queries the tagger for a given pod uid
+    :return: string array, empty if pod not found
+    """
     return get_tags('kubernetes_pod://%s' % pod_id, cardinality)
 
 
 def tags_for_docker(cid, cardinality):
+    """
+    Queries the tagger for a given container id
+    :return: string array, empty if container not found
+    """
     return get_tags('docker://%s' % cid, cardinality)
 
 
 def get_pod_by_uid(uid, podlist):
     """
+    Searches for a pod uid in the podlist and returns the pod if found
     :param uid: pod uid
     :param podlist: podlist dict object
-    :return: pod dict object
+    :return: pod dict object if found, None if not found
     """
     for pod in podlist.get("items", []):
         try:
@@ -97,6 +105,12 @@ class ContainerFilter:
                     self.containers[short_cid] = ctr
 
     def is_excluded(self, cid):
+        """
+        Queries the agent6 container filter interface. It retrieves container
+        name + image from the podlist, so static pod filtering is not supported.
+        :param cid: container id
+        :return: bool
+        """
         if cid not in self.containers:
             # Filter out metrics not coming from a container (system slices)
             return True
