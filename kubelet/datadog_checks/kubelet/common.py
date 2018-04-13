@@ -79,6 +79,7 @@ def is_static_pending_pod(pod):
     except KeyError:
         return False
 
+
 class ContainerFilter:
     def __init__(self, podlist):
         self.containers = {}

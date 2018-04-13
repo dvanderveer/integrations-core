@@ -25,8 +25,8 @@ instances:
     ###
     ### Metric collection for legacy (< 1.7.6) clusters via the kubelet's
     ### cadvisor port.
-    ### This port is closed by default on k8s 1.7 and OpenShift, make sure
-    ### you enable it via the `--cadvisor-port=4194` option.
+    ### This port is closed by default on k8s 1.7+ and OpenShift, enable it
+    ### via the `--cadvisor-port=4194` kubelet option.
     ###
     #
     # Port to connect to, uncomment and set accordingly to enable collection.
