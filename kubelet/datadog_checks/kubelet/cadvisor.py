@@ -17,7 +17,7 @@ import requests
 from datadog_checks.config import is_affirmative
 
 # check
-from .common import FACTORS, tags_for_docker, tags_for_pod
+from .common import FACTORS, tags_for_docker, tags_for_pod, is_static_pending_pod, get_pod_by_uid
 
 NAMESPACE = "kubernetes"
 DEFAULT_MAX_DEPTH = 10
@@ -126,33 +126,48 @@ class CadvisorScraper():
     def _update_container_metrics(self, instance, subcontainer):
         tags = []
         is_pod = False
-        # Network metrics are attached to a pod
-        if subcontainer.get('labels', []).get('io.kubernetes.container.name') == "POD":
-            pod_uid = subcontainer.get('labels', []).get('io.kubernetes.pod.uid')
-            if pod_uid:
-                tags = tags_for_pod(pod_uid, True)
-                is_pod = True
-        else:  # Container
-            if self.container_filter.is_excluded(subcontainer.get('id')):
-                self.log.warning("excluding " + subcontainer.get('id'))
+        in_static_pod = False
+        cid = subcontainer.get('id')
+        pod_uid = subcontainer.get('labels', []).get('io.kubernetes.pod.uid')
+        k_container_name = subcontainer.get('labels', []).get('io.kubernetes.container.name')
+
+        # We want to collect network metrics at the pod level
+        if k_container_name == "POD" and pod_uid:
+            is_pod = True
+
+        # FIXME we are forced to do that because the Kubelet PodList isn't updated
+        # for static pods, see https://github.com/kubernetes/kubernetes/pull/59948
+        pod = get_pod_by_uid(pod_uid, self.pod_list)
+        if pod is not None and is_static_pending_pod(pod):
+            in_static_pod = True
+
+        # Let's see who we have here
+        if is_pod:
+            tags = tags_for_pod(pod_uid, True)
+        elif (in_static_pod and k_container_name):
+            tags = tags_for_docker(cid, True)
+            tags += tags_for_pod(pod_uid, True)
+            tags.append("kube_container_name:%s" % k_container_name)
+        else:  # Standard container
+            if self.container_filter.is_excluded(cid):
+                self.log.debug("Filtering out " + cid)
                 return
-            tags = tags_for_docker(subcontainer.get('id'), True)
+            tags = tags_for_docker(cid, True)
 
         if not tags:
-            self.log.debug("Subcontainer doesn't have tags, skipping.")
+            self.log.debug("Subcontainer {} doesn't have tags, skipping.".format(cid))
             return
-
         tags = list(set(tags + instance.get('tags', [])))
 
         stats = subcontainer['stats'][-1]  # take the latest
         self._publish_raw_metrics(NAMESPACE, stats, tags, is_pod)
 
-        if subcontainer.get("spec", {}).get("has_filesystem") and stats.get('filesystem', []) != []:
+        if is_pod is False and subcontainer.get("spec", {}).get("has_filesystem") and stats.get('filesystem', []) != []:
             fs = stats['filesystem'][-1]
             fs_utilization = float(fs['usage']) / float(fs['capacity'])
             self.gauge(NAMESPACE + '.filesystem.usage_pct', fs_utilization, tags=tags)
 
-        if subcontainer.get("spec", {}).get("has_network"):
+        if is_pod and subcontainer.get("spec", {}).get("has_network"):
             net = stats['network']
             self.rate(NAMESPACE + '.network_errors',
                       sum(float(net[x]) for x in NET_ERRORS),

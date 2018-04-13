@@ -45,6 +45,40 @@ def tags_for_docker(cid, cardinality):
     return get_tags('docker://%s' % cid, cardinality)
 
 
+def get_pod_by_uid(uid, podlist):
+    """
+    :param uid: pod uid
+    :param podlist: podlist dict object
+    :return: pod dict object
+    """
+    for pod in podlist.get("items", []):
+        try:
+            if pod["metadata"]["uid"] == uid:
+                return pod
+        except KeyError:
+            continue
+    return None
+
+
+def is_static_pending_pod(pod):
+    """
+    Return if the pod is a static pending pod
+    See https://github.com/kubernetes/kubernetes/pull/57106
+    :param pod: dict
+    :return: bool
+    """
+    try:
+        if pod["metadata"]["annotations"]["kubernetes.io/config.source"] == "api":
+            return False
+
+        pod_status = pod["status"]
+        if pod_status["phase"] != "Pending":
+            return False
+
+        return "containerStatuses" not in pod_status
+    except KeyError:
+        return False
+
 class ContainerFilter:
     def __init__(self, podlist):
         self.containers = {}

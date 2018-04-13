@@ -18,7 +18,7 @@ from kubeutil import get_connection_info
 from tagger import get_tags
 
 # check
-from .common import FACTORS, CADVISOR_DEFAULT_PORT, ContainerFilter
+from .common import FACTORS, CADVISOR_DEFAULT_PORT, ContainerFilter, is_static_pending_pod, get_pod_by_uid
 from .cadvisor import CadvisorScraper
 
 METRIC_TYPES = ['counter', 'gauge', 'summary']
@@ -347,34 +347,7 @@ class KubeletCheck(PrometheusCheck, CadvisorScraper):
         :return:
         """
         pod_uid = self._get_pod_uid(labels)
-        for pod in self.pod_list["items"]:
-            try:
-                if pod["metadata"]["uid"] == pod_uid:
-                    return pod
-            except KeyError:
-                continue
-
-        return None
-
-    @staticmethod
-    def _is_static_pending_pod(pod):
-        """
-        Return if the pod is a static pending pod
-        See https://github.com/kubernetes/kubernetes/pull/57106
-        :param pod: dict
-        :return: bool
-        """
-        try:
-            if pod["metadata"]["annotations"]["kubernetes.io/config.source"] == "api":
-                return False
-
-            pod_status = pod["status"]
-            if pod_status["phase"] != "Pending":
-                return False
-
-            return "containerStatuses" not in pod_status
-        except KeyError:
-            return False
+        return get_pod_by_uid(pod_uid, self.pod_list)
 
     @staticmethod
     def _get_tags_from_labels(labels):
@@ -409,7 +382,7 @@ class KubeletCheck(PrometheusCheck, CadvisorScraper):
                 # FIXME we are forced to do that because the Kubelet PodList isn't updated
                 # for static pods, see https://github.com/kubernetes/kubernetes/pull/59948
                 pod = self._get_pod_by_metric_label(metric.label)
-                if pod is not None and self._is_static_pending_pod(pod):
+                if pod is not None and is_static_pending_pod(pod):
                     tags += get_tags('kubernetes_pod://%s' % pod["metadata"]["uid"], True)
                     tags += self._get_tags_from_labels(metric.label)
                     tags = list(set(tags))
@@ -451,7 +424,7 @@ class KubeletCheck(PrometheusCheck, CadvisorScraper):
                 # FIXME we are forced to do that because the Kubelet PodList isn't updated
                 # for static pods, see https://github.com/kubernetes/kubernetes/pull/59948
                 pod = self._get_pod_by_metric_label(metric.label)
-                if pod is not None and self._is_static_pending_pod(pod):
+                if pod is not None and is_static_pending_pod(pod):
                     tags += get_tags('kubernetes_pod://%s' % pod["metadata"]["uid"], True)
                     tags += self._get_tags_from_labels(metric.label)
                     tags = list(set(tags))
