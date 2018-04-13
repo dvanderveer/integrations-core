@@ -144,7 +144,8 @@ def test_kubelet_check_prometheus(monkeypatch, aggregator):
 def test_kubelet_check_cadvisor(monkeypatch, aggregator):
     cadvisor_url = "http://valid:port/url"
     check = KubeletCheck('kubelet', None, {}, [{}])
-    monkeypatch.setattr(check, 'retrieve_pod_list', mock.Mock(return_value=json.loads(mock_from_file('pods_list_1.2.json'))))
+    monkeypatch.setattr(check, 'retrieve_pod_list',
+                        mock.Mock(return_value=json.loads(mock_from_file('pods_list_1.2.json'))))
     monkeypatch.setattr(check, 'retrieve_node_spec', mock.Mock(return_value=NODE_SPEC))
     monkeypatch.setattr(check, '_perform_kubelet_check', mock.Mock(return_value=None))
     monkeypatch.setattr(check, 'retrieve_cadvisor_metrics',
@@ -152,7 +153,8 @@ def test_kubelet_check_cadvisor(monkeypatch, aggregator):
     monkeypatch.setattr(check, 'process', mock.Mock(return_value=None))
     monkeypatch.setattr(check, 'detect_cadvisor', mock.Mock(return_value=cadvisor_url))
 
-    monkeypatch.setattr('datadog_checks.kubelet.cadvisor.tags_for_docker', mock.Mock(return_value=["foo:bar"]))
+    monkeypatch.setattr('datadog_checks.kubelet.cadvisor.tags_for_docker',
+                        mock.Mock(return_value=["foo:bar"]))
 
     check.check({})
 
