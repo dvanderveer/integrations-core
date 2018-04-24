@@ -547,7 +547,15 @@ class Network(AgentCheck):
             for interface, metrics in metrics_by_interface.iteritems():
                 self._submit_devicemetrics(interface, metrics, custom_tags)
         except SubprocessOutputEmptyError:
-            self.log.exception("Error collecting kstat stats.")
+            self.log.warning("'kstat -p link:0:' returned no output.")
+            try:
+                # fall back to Oracle Solaris 10 kstat options
+                netstat, _, _ = get_subprocess_output(["kstat", "-c", "net", "-n", "mac", "-p"], self.log)
+                metrics_by_interface = self._parse_solaris_netstat(netstat)
+                for interface, metrics in metrics_by_interface.iteritems():
+                    self._submit_devicemetrics(interface, metrics, custom_tags)
+            except SubprocessOutputEmptyError:
+                self.log.exception("'kstat -c net -n mac -p' also returned no output.")
 
         try:
             netstat, _, _ = get_subprocess_output(["netstat", "-s", "-P" "tcp"], self.log)
@@ -575,7 +583,7 @@ class Network(AgentCheck):
                 }
             }
         """
-        # Here's an example of the netstat output:
+        # Here's an example of kstat output for SmartOS or Solaris 11:
         #
         # link:0:net0:brdcstrcv   527336
         # link:0:net0:brdcstxmt   1595
@@ -627,6 +635,14 @@ class Network(AgentCheck):
         # link:0:net1:snaptime    16834735.1613302
         # link:0:net1:unknowns    0
         # link:0:net1:zonename    53aa9b7e-48ba-4152-a52b-a6368c3d9e7c
+        #
+        # Oracle Solaris 10 has the same fields with different module names:
+        # 
+        # e1000g:0:mac:brdcstrcv  436513944
+        # e1000g:0:mac:brdcstxmt  1591585
+        # e1000g:0:mac:class      net
+        # etc...
+
 
         # A mapping of solaris names -> datadog names
         metric_by_solaris_name = {
@@ -646,12 +662,17 @@ class Network(AgentCheck):
             # Parse the metric & interface.
             cols = l.split()
             link, n, iface, name = cols[0].split(":")
-            assert link == "link"
 
             # Get the datadog metric name.
             ddname = metric_by_solaris_name.get(name, None)
             if ddname is None:
                 continue
+
+            # for Solaris 10, interface name is module + instance
+            if iface == "mac":
+                iface = link + n
+            else:
+                assert link == "link"
 
             # Add it to this interface's list of metrics.
             metrics = metrics_by_interface.get(iface, {})
